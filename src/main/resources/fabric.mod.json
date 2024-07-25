@@ -1,0 +1,51 @@
+{
+	"schemaVersion": 1,
+	"id": "digicraft",
+	"version": "${version}",
+	"name": "DigiCraft",
+	"description": "Digital Electronics in Minecraft",
+	"authors": [
+		"Yarml"
+	],
+	"contact": {
+		"homepage": "https://github.com/yarml/digicraft",
+		"sources": "https://github.com/yarml/digicraft"
+	},
+	"license": "GPLv3",
+	"icon": "assets/digicraft/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			{
+				"value": "yarml.digicraft.DigiCraft",
+				"adapter": "kotlin"
+			}
+		],
+		"client": [
+			{
+				"value": "yarml.digicraft.DigiCraftClient",
+				"adapter": "kotlin"
+			}
+		],
+		"fabric-datagen": [
+			{
+				"value": "yarml.digicraft.data.DigiCraftDataGenerator",
+				"adapter": "kotlin"
+			}
+		]
+	},
+	"mixins": [
+		"digicraft.mixins.json",
+		{
+			"config": "digicraft.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.15.11",
+		"minecraft": "~1.21",
+		"java": ">=21",
+		"fabric-api": "*",
+		"fabric-language-kotlin": "*"
+	}
+}

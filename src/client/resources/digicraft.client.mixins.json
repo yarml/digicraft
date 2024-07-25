@@ -1,0 +1,8 @@
+{
+	"required": true,
+	"package": "yarml.digicraft.mixin.client",
+	"compatibilityLevel": "JAVA_21",
+	"injectors": {
+		"defaultRequire": 1
+	}
+}
