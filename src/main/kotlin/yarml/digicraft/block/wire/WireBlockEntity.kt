@@ -17,6 +17,7 @@ import net.minecraft.util.shape.VoxelShape
 import net.minecraft.util.shape.VoxelShapes
 import net.minecraft.world.WorldAccess
 import yarml.digicraft.block.DigiBlockEntities
+import java.util.Optional
 
 class WireBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(DigiBlockEntities.WireBlockEntity, pos, state) {
     companion object {
@@ -32,12 +33,12 @@ class WireBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(DigiBlockE
     }
 
     private val sides = mutableMapOf(
-        Direction.DOWN to WireSide(false, true, false, false, false, false),
-        Direction.UP to WireSide(false, false, false, false, false, false),
-        Direction.NORTH to WireSide(false, false, false, false, false, false),
-        Direction.SOUTH to WireSide(false, false, false, false, false, false),
-        Direction.EAST to WireSide(false, false, false, false, false, false),
-        Direction.WEST to WireSide(false, false, false, false, false, false),
+        Direction.DOWN to WireSide(power = false, base = true),
+        Direction.UP to WireSide(power = false, base = false),
+        Direction.NORTH to WireSide(power = false, base = false),
+        Direction.SOUTH to WireSide(power = false, base = false),
+        Direction.EAST to WireSide(power = false, base = false),
+        Direction.WEST to WireSide(power = false, base = false),
     )
 
     fun getOutlineShape(): VoxelShape {
@@ -70,12 +71,21 @@ class WireBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(DigiBlockE
     fun getSide(direction: Direction): WireSide {
         return sides[direction]!!
     }
+
     fun getSideNeighbours(direction: Direction): List<Pair<Boolean, Direction>> {
         val side = sides[direction]!!
-        return side.clockwiseConnections().zip(WireShapes.clockwiseNeighbors(direction))
+        return WireShapes.clockwiseNeighbors(direction)
+            .map { neighbourDirection -> Pair(side.connectionOf(neighbourDirection), neighbourDirection) }
     }
 
-    fun updateForNeighbourUpdate(state: BlockState, direction: Direction, neighbourState: BlockState, world: WorldAccess, pos: BlockPos, neighbourPos: BlockPos): BlockState {
+    fun updateForNeighbourUpdate(
+        state: BlockState,
+        direction: Direction,
+        neighbourState: BlockState,
+        world: WorldAccess,
+        pos: BlockPos,
+        neighbourPos: BlockPos
+    ): BlockState {
         return state
     }
 
@@ -86,6 +96,7 @@ class WireBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(DigiBlockE
             nbtWriteSide(direction.toString(), sides[direction]!!, nbt)
         }
     }
+
     override fun readNbt(nbt: NbtCompound, registryLookup: RegistryWrapper.WrapperLookup) {
         super.readNbt(nbt, registryLookup)
         for (direction in Direction.entries) {
@@ -102,32 +113,58 @@ class WireBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(DigiBlockE
     }
 }
 
-class WireSide(
+data class WireSide(
     var power: Boolean,
-    var base: Boolean,
-    var up: Boolean,
-    var down: Boolean,
-    var left: Boolean,
-    var right: Boolean
+    val base: Boolean,
 ) {
+    private val connections = mutableMapOf<Direction, Boolean>()
+
     companion object {
         val CODEC: Codec<WireSide> = RecordCodecBuilder.create { instance ->
             instance.group(
                 Codec.BOOL.fieldOf("power").forGetter(WireSide::power),
                 Codec.BOOL.fieldOf("base").forGetter(WireSide::base),
-                Codec.BOOL.fieldOf("up").forGetter(WireSide::up),
-                Codec.BOOL.fieldOf("down").forGetter(WireSide::down),
-                Codec.BOOL.fieldOf("left").forGetter(WireSide::left),
-                Codec.BOOL.fieldOf("right").forGetter(WireSide::right)
+                Codec.BOOL.optionalFieldOf("up").forGetter { it -> Optional.ofNullable(it.connections[Direction.UP]) },
+                Codec.BOOL.optionalFieldOf("down")
+                    .forGetter { it -> Optional.ofNullable(it.connections[Direction.DOWN]) },
+                Codec.BOOL.optionalFieldOf("north")
+                    .forGetter { it -> Optional.ofNullable(it.connections[Direction.NORTH]) },
+                Codec.BOOL.optionalFieldOf("south")
+                    .forGetter { it -> Optional.ofNullable(it.connections[Direction.SOUTH]) },
+                Codec.BOOL.optionalFieldOf("east")
+                    .forGetter { it -> Optional.ofNullable(it.connections[Direction.EAST]) },
+                Codec.BOOL.optionalFieldOf("west")
+                    .forGetter { it -> Optional.ofNullable(it.connections[Direction.WEST]) },
             ).apply(instance, ::WireSide)
         }
     }
 
-    fun clockwiseConnections(): List<Boolean> {
-        return listOf(up, right, down, left)
+    constructor(
+        power: Boolean,
+        base: Boolean,
+        up: Optional<Boolean>,
+        down: Optional<Boolean>,
+        north: Optional<Boolean>,
+        south: Optional<Boolean>,
+        east: Optional<Boolean>,
+        west: Optional<Boolean>
+    ) : this(
+        power,
+        base
+    ) {
+        up.orElse(null)?.let { connections[Direction.UP] = it }
+        down.orElse(null)?.let { connections[Direction.DOWN] = it }
+        north.orElse(null)?.let { connections[Direction.NORTH] = it }
+        south.orElse(null)?.let { connections[Direction.SOUTH] = it }
+        east.orElse(null)?.let { connections[Direction.EAST] = it }
+        west.orElse(null)?.let { connections[Direction.WEST] = it }
+    }
+
+    fun connectionOf(direction: Direction): Boolean {
+        return connections[direction] ?: false
     }
 
     fun exists(): Boolean {
-        return base || up || down || left || right
+        return base || connections.any { it.value }
     }
 }
