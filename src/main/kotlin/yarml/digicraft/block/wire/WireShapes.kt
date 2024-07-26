@@ -20,10 +20,10 @@ object WireShapes {
         Pair(Direction.DOWN, Direction.EAST) to Box(9.0, 0.0, 7.0, 16.0, 2.0, 9.0),
         Pair(Direction.DOWN, Direction.WEST) to Box(0.0, 0.0, 7.0, 7.0, 2.0, 9.0),
 
-        Pair(Direction.UP, Direction.NORTH) to Box(7.0, 14.0, 9.0, 9.0, 16.0, 16.0),
-        Pair(Direction.UP, Direction.SOUTH) to Box(7.0, 14.0, 0.0, 9.0, 16.0, 7.0),
-        Pair(Direction.UP, Direction.EAST) to Box(0.0, 14.0, 7.0, 7.0, 16.0, 9.0),
-        Pair(Direction.UP, Direction.WEST) to Box(9.0, 14.0, 7.0, 16.0, 16.0, 9.0),
+        Pair(Direction.UP, Direction.NORTH) to Box(7.0, 14.0, 0.0, 9.0, 16.0, 7.0),
+        Pair(Direction.UP, Direction.SOUTH) to Box(7.0, 14.0, 9.0, 9.0, 16.0, 16.0),
+        Pair(Direction.UP, Direction.EAST) to Box(9.0, 14.0, 7.0, 16.0, 16.0, 9.0),
+        Pair(Direction.UP, Direction.WEST) to Box(0.0, 14.0, 7.0, 7.0, 16.0, 9.0),
 
         Pair(Direction.NORTH, Direction.DOWN) to Box(7.0, 0.0, 0.0, 9.0, 7.0, 2.0),
         Pair(Direction.NORTH, Direction.UP) to Box(7.0, 9.0, 0.0, 9.0, 16.0, 2.0),

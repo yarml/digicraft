@@ -11,12 +11,14 @@ import net.minecraft.network.listener.ClientPlayPacketListener
 import net.minecraft.network.packet.Packet
 import net.minecraft.network.packet.s2c.play.BlockEntityUpdateS2CPacket
 import net.minecraft.registry.RegistryWrapper
+import net.minecraft.state.property.Properties
 import net.minecraft.util.math.BlockPos
 import net.minecraft.util.math.Direction
 import net.minecraft.util.shape.VoxelShape
 import net.minecraft.util.shape.VoxelShapes
 import net.minecraft.world.WorldAccess
 import yarml.digicraft.block.DigiBlockEntities
+import yarml.digicraft.block.DigiBlocks
 import java.util.Optional
 
 class WireBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(DigiBlockEntities.WireBlockEntity, pos, state) {
@@ -26,6 +28,7 @@ class WireBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(DigiBlockE
                 nbt.put(side, it)
             }
         }
+
         private fun nbtReadSide(side: String, nbt: NbtCompound): WireSide {
             val wireSide = WireSide.CODEC.parse(NbtOps.INSTANCE, nbt.get(side)).result().get()
             return wireSide
@@ -33,13 +36,17 @@ class WireBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(DigiBlockE
     }
 
     private val sides = mutableMapOf(
-        Direction.DOWN to WireSide(power = false, base = true),
+        Direction.DOWN to WireSide(power = false, base = false),
         Direction.UP to WireSide(power = false, base = false),
         Direction.NORTH to WireSide(power = false, base = false),
         Direction.SOUTH to WireSide(power = false, base = false),
         Direction.EAST to WireSide(power = false, base = false),
         Direction.WEST to WireSide(power = false, base = false),
     )
+
+    init {
+        sides[state.get(Properties.FACING)] = WireSide(power = false, base = true)
+    }
 
     fun getOutlineShape(): VoxelShape {
         var shape = VoxelShapes.empty()
@@ -86,7 +93,45 @@ class WireBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(DigiBlockE
         pos: BlockPos,
         neighbourPos: BlockPos
     ): BlockState {
-        return state
+        if (neighbourState.isAir) {
+            removeConnectionsTo(direction)
+        }
+        if (neighbourState.block == DigiBlocks.Wire) {
+            val maybeNeighbourWire = world.getBlockEntity(neighbourPos, DigiBlockEntities.WireBlockEntity)
+            if (maybeNeighbourWire.isPresent) {
+                connectToNeighbour(maybeNeighbourWire.get(), direction)
+            }
+        }
+        return if (sides.values.any { side -> side.exists() }) {
+            state
+        } else {
+            markRemoved()
+            Blocks.AIR.defaultState
+        }
+    }
+
+    private fun removeConnectionsTo(direction: Direction) {
+        sides[direction] = WireSide(power = false, base = false)
+        for (rotationDirection in WireShapes.clockwiseNeighbors(direction)) {
+            val neighbourSide = getSide(rotationDirection)
+            if (neighbourSide.connectionOf(direction)) {
+                neighbourSide.setConnectionOf(direction, false)
+            }
+        }
+        markDirty()
+    }
+
+    private fun connectToNeighbour(neighbour: WireBlockEntity, neighbourDirection: Direction) {
+        for (rotationDirection in WireShapes.clockwiseNeighbors(neighbourDirection)) {
+            val neighbourSide = neighbour.getSide(rotationDirection)
+            val side = getSide(rotationDirection)
+            if (neighbourSide.base && side.base) {
+                neighbourSide.setConnectionOf(neighbourDirection.opposite, true)
+                side.setConnectionOf(neighbourDirection, true)
+                markDirty()
+                neighbour.markDirty()
+            }
+        }
     }
 
     override fun writeNbt(nbt: NbtCompound, registryLookup: RegistryWrapper.WrapperLookup) {
@@ -162,6 +207,10 @@ data class WireSide(
 
     fun connectionOf(direction: Direction): Boolean {
         return connections[direction] ?: false
+    }
+
+    fun setConnectionOf(direction: Direction, value: Boolean) {
+        connections[direction] = value
     }
 
     fun exists(): Boolean {

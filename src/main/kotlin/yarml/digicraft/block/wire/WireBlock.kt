@@ -3,7 +3,10 @@ package yarml.digicraft.block.wire
 import net.minecraft.block.*
 import net.minecraft.block.entity.BlockEntity
 import net.minecraft.entity.LivingEntity
+import net.minecraft.item.ItemPlacementContext
 import net.minecraft.item.ItemStack
+import net.minecraft.state.StateManager
+import net.minecraft.state.property.Properties
 import net.minecraft.util.math.BlockPos
 import net.minecraft.util.math.Direction
 import net.minecraft.util.shape.VoxelShape
@@ -14,6 +17,19 @@ import net.minecraft.world.WorldAccess
 import yarml.digicraft.block.DigiBlockEntities
 
 class WireBlock : Block(Settings.copy(Blocks.REDSTONE_WIRE)), BlockEntityProvider {
+    init {
+        defaultState = stateManager.defaultState.with(Properties.FACING, Direction.DOWN)
+    }
+
+    override fun appendProperties(builder: StateManager.Builder<Block, BlockState>) {
+        super.appendProperties(builder)
+        builder.add(Properties.FACING)
+    }
+
+    override fun getPlacementState(ctx: ItemPlacementContext): BlockState {
+        return defaultState.with(Properties.FACING, ctx.side.opposite)
+    }
+
     override fun createBlockEntity(pos: BlockPos, state: BlockState): BlockEntity {
         return WireBlockEntity(pos, state)
     }
@@ -33,11 +49,11 @@ class WireBlock : Block(Settings.copy(Blocks.REDSTONE_WIRE)), BlockEntityProvide
     }
 
     override fun onPlaced(
-        world: World?,
-        pos: BlockPos?,
-        state: BlockState?,
+        world: World,
+        pos: BlockPos,
+        state: BlockState,
         placer: LivingEntity?,
-        itemStack: ItemStack?
+        itemStack: ItemStack
     ) {
     }
 
