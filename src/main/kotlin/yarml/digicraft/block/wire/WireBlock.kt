@@ -2,9 +2,8 @@ package yarml.digicraft.block.wire
 
 import net.minecraft.block.*
 import net.minecraft.block.entity.BlockEntity
-import net.minecraft.entity.LivingEntity
+import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.item.ItemPlacementContext
-import net.minecraft.item.ItemStack
 import net.minecraft.state.StateManager
 import net.minecraft.state.property.Properties
 import net.minecraft.util.math.BlockPos
@@ -34,6 +33,27 @@ class WireBlock : Block(Settings.copy(Blocks.REDSTONE_WIRE)), BlockEntityProvide
         return WireBlockEntity(pos, state)
     }
 
+    override fun onBreak(world: World?, pos: BlockPos?, state: BlockState?, player: PlayerEntity?): BlockState {
+        return super.onBreak(world, pos, state, player)
+    }
+
+    override fun onStateReplaced(
+        state: BlockState,
+        world: World,
+        pos: BlockPos,
+        newState: BlockState,
+        moved: Boolean
+    ) {
+        if (!state.isOf(newState.block)) {
+            val blockEntity = world.getBlockEntity(pos, DigiBlockEntities.WireBlockEntity)
+            if (blockEntity.isPresent) {
+                blockEntity.get().removeAll()
+            }
+        }
+        // This will remove the block entity
+        super.onStateReplaced(state, world, pos, newState, moved)
+    }
+
     override fun getOutlineShape(
         state: BlockState,
         world: BlockView,
@@ -48,15 +68,6 @@ class WireBlock : Block(Settings.copy(Blocks.REDSTONE_WIRE)), BlockEntityProvide
         }
     }
 
-    override fun onPlaced(
-        world: World,
-        pos: BlockPos,
-        state: BlockState,
-        placer: LivingEntity?,
-        itemStack: ItemStack
-    ) {
-    }
-
     override fun getStateForNeighborUpdate(
         state: BlockState,
         direction: Direction,
@@ -65,11 +76,11 @@ class WireBlock : Block(Settings.copy(Blocks.REDSTONE_WIRE)), BlockEntityProvide
         pos: BlockPos,
         neighborPos: BlockPos
     ): BlockState {
-        val blockEntity = world.getBlockEntity(pos, DigiBlockEntities.WireBlockEntity)
-        if (blockEntity.isPresent) {
-            return blockEntity.get().updateForNeighbourUpdate(state, direction, neighborState, world, pos, neighborPos)
-        } else {
+        val maybeBlockEntity = world.getBlockEntity(pos, DigiBlockEntities.WireBlockEntity)
+        if (maybeBlockEntity.isEmpty) {
             return state
         }
+        val blockEntity = maybeBlockEntity.get()
+        return blockEntity.updateForNeighbourUpdate(state, direction, neighborState, world, pos, neighborPos)
     }
 }

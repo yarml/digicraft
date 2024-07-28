@@ -10,9 +10,9 @@ import yarml.digicraft.DigiCraft
 import yarml.digicraft.block.wire.WireBlock
 
 object DigiBlocks {
-    lateinit var Wire: Block
+    lateinit var Wire: WireBlock
 
-    private fun register(block: Block, name: String, itemSettings: Item.Settings?): Block {
+    private fun <B: Block> register(block: B, name: String, itemSettings: Item.Settings?): B {
         val id = Identifier.of(DigiCraft.MOD_ID, name)
         if (itemSettings != null) {
             val blockItem = BlockItem(block, Item.Settings())
@@ -22,6 +22,6 @@ object DigiBlocks {
     }
 
     fun init() {
-        Wire = register(WireBlock(), "wire", Item.Settings())
+        Wire = register(WireBlock(), "wire", null)
     }
 }

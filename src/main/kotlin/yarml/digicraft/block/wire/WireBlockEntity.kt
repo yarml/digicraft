@@ -16,12 +16,15 @@ import net.minecraft.util.math.BlockPos
 import net.minecraft.util.math.Direction
 import net.minecraft.util.shape.VoxelShape
 import net.minecraft.util.shape.VoxelShapes
+import net.minecraft.world.World
 import net.minecraft.world.WorldAccess
+import yarml.digicraft.DigiCraft
 import yarml.digicraft.block.DigiBlockEntities
 import yarml.digicraft.block.DigiBlocks
 import java.util.Optional
 
-class WireBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(DigiBlockEntities.WireBlockEntity, pos, state) {
+class WireBlockEntity(pos: BlockPos, state: BlockState) :
+    BlockEntity(DigiBlockEntities.WireBlockEntity, pos, state) {
     companion object {
         private fun nbtWriteSide(side: String, wireSide: WireSide, nbt: NbtCompound) {
             WireSide.CODEC.encodeStart(NbtOps.INSTANCE, wireSide).result().ifPresent {
@@ -43,10 +46,6 @@ class WireBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(DigiBlockE
         Direction.EAST to WireSide(power = false, base = false),
         Direction.WEST to WireSide(power = false, base = false),
     )
-
-    init {
-        sides[state.get(Properties.FACING)] = WireSide(power = false, base = true)
-    }
 
     fun getOutlineShape(): VoxelShape {
         var shape = VoxelShapes.empty()
@@ -94,7 +93,7 @@ class WireBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(DigiBlockE
         neighbourPos: BlockPos
     ): BlockState {
         if (neighbourState.isAir) {
-            removeConnectionsTo(direction)
+            removeBase(direction)
         }
         if (neighbourState.block == DigiBlocks.Wire) {
             val maybeNeighbourWire = world.getBlockEntity(neighbourPos, DigiBlockEntities.WireBlockEntity)
@@ -110,15 +109,98 @@ class WireBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(DigiBlockE
         }
     }
 
-    private fun removeConnectionsTo(direction: Direction) {
+    fun addBaseToSide(direction: Direction): Boolean {
+        if (getSide(direction).base) {
+            return false
+        }
+        val modifiedWires = mutableSetOf<WireBlockEntity>()
+        sides[direction] = WireSide(power = false, base = true)
+        for (rotationDirection in WireShapes.clockwiseNeighbors(direction)) {
+            // Add connections to bases within the same wire block
+            val neighbourSide = getSide(rotationDirection)
+            if (neighbourSide.base) {
+                neighbourSide.setConnectionOf(direction, true)
+                getSide(direction).setConnectionOf(rotationDirection, true)
+            }
+            // Add connections to bases in neighbouring wire blocks that have bases on the added side
+            val neighbourPos = pos.offset(rotationDirection)
+            val neighbourWire = world!!.getBlockEntity(neighbourPos, DigiBlockEntities.WireBlockEntity)
+            if (neighbourWire.isPresent) {
+                val neighbourBlockSide = neighbourWire.get().getSide(direction)
+                if (neighbourBlockSide.base) {
+                    modifiedWires.add(neighbourWire.get())
+                    neighbourBlockSide.setConnectionOf(rotationDirection.opposite, true)
+                    getSide(direction).setConnectionOf(rotationDirection, true)
+                }
+            }
+
+            // Add connection to the block that is neighbouring our neighbour in the direction we want to add a base on
+            val neighbourNeighbourPos = neighbourPos.offset(direction)
+            val neighbourNeighbourWire =
+                world!!.getBlockEntity(neighbourNeighbourPos, DigiBlockEntities.WireBlockEntity)
+            if (neighbourNeighbourWire.isPresent) {
+                val neighbourNeighbourBlockSide = neighbourNeighbourWire.get().getSide(rotationDirection.opposite)
+                if (neighbourNeighbourBlockSide.base) {
+                    modifiedWires.add(neighbourNeighbourWire.get())
+                    neighbourNeighbourBlockSide.setConnectionOf(direction.opposite, true)
+                    getSide(direction).setConnectionOf(rotationDirection, true)
+                }
+            }
+        }
+        for (modifiedWire in modifiedWires) {
+            modifiedWire.markDirty()
+        }
+        markDirty()
+        return true
+    }
+
+    private fun removeBase(direction: Direction) {
+        if (!getSide(direction).base) {
+            return
+        }
+        val modifiedWires = mutableSetOf<WireBlockEntity>()
         sides[direction] = WireSide(power = false, base = false)
         for (rotationDirection in WireShapes.clockwiseNeighbors(direction)) {
             val neighbourSide = getSide(rotationDirection)
             if (neighbourSide.connectionOf(direction)) {
                 neighbourSide.setConnectionOf(direction, false)
             }
+
+            // Remove connections in neighbouring wire blocks that have bases on the removed side
+            val neighbourPos = pos.offset(rotationDirection)
+            val neighbourWire = world!!.getBlockEntity(neighbourPos, DigiBlockEntities.WireBlockEntity)
+            if (neighbourWire.isPresent) {
+                val neighbourBlockSide = neighbourWire.get().getSide(direction)
+                if (neighbourBlockSide.base) {
+                    modifiedWires.add(neighbourWire.get())
+                    neighbourBlockSide.setConnectionOf(rotationDirection.opposite, false)
+                    neighbourWire.get().markDirty()
+                }
+            }
+
+            // Remove connection to the block that is neighbouring our neighbour in the direction we want to remove a base on
+            val neighbourNeighbourPos = neighbourPos.offset(direction)
+            val neighbourNeighbourWire =
+                world!!.getBlockEntity(neighbourNeighbourPos, DigiBlockEntities.WireBlockEntity)
+            if (neighbourNeighbourWire.isPresent) {
+                val neighbourNeighbourBlockSide = neighbourNeighbourWire.get().getSide(rotationDirection.opposite)
+                if (neighbourNeighbourBlockSide.base) {
+                    modifiedWires.add(neighbourNeighbourWire.get())
+                    neighbourNeighbourBlockSide.setConnectionOf(direction.opposite, false)
+                    neighbourNeighbourWire.get().markDirty()
+                }
+            }
+        }
+        for (modifiedWire in modifiedWires) {
+            modifiedWire.markDirty()
         }
         markDirty()
+    }
+
+    fun removeAll() {
+        for (direction in Direction.entries) {
+            removeBase(direction)
+        }
     }
 
     private fun connectToNeighbour(neighbour: WireBlockEntity, neighbourDirection: Direction) {
@@ -169,17 +251,12 @@ data class WireSide(
             instance.group(
                 Codec.BOOL.fieldOf("power").forGetter(WireSide::power),
                 Codec.BOOL.fieldOf("base").forGetter(WireSide::base),
-                Codec.BOOL.optionalFieldOf("up").forGetter { it -> Optional.ofNullable(it.connections[Direction.UP]) },
-                Codec.BOOL.optionalFieldOf("down")
-                    .forGetter { it -> Optional.ofNullable(it.connections[Direction.DOWN]) },
-                Codec.BOOL.optionalFieldOf("north")
-                    .forGetter { it -> Optional.ofNullable(it.connections[Direction.NORTH]) },
-                Codec.BOOL.optionalFieldOf("south")
-                    .forGetter { it -> Optional.ofNullable(it.connections[Direction.SOUTH]) },
-                Codec.BOOL.optionalFieldOf("east")
-                    .forGetter { it -> Optional.ofNullable(it.connections[Direction.EAST]) },
-                Codec.BOOL.optionalFieldOf("west")
-                    .forGetter { it -> Optional.ofNullable(it.connections[Direction.WEST]) },
+                Codec.BOOL.optionalFieldOf("up").forGetter { Optional.ofNullable(it.connections[Direction.UP]) },
+                Codec.BOOL.optionalFieldOf("down").forGetter { Optional.ofNullable(it.connections[Direction.DOWN]) },
+                Codec.BOOL.optionalFieldOf("north").forGetter { Optional.ofNullable(it.connections[Direction.NORTH]) },
+                Codec.BOOL.optionalFieldOf("south").forGetter { Optional.ofNullable(it.connections[Direction.SOUTH]) },
+                Codec.BOOL.optionalFieldOf("east").forGetter { Optional.ofNullable(it.connections[Direction.EAST]) },
+                Codec.BOOL.optionalFieldOf("west").forGetter { Optional.ofNullable(it.connections[Direction.WEST]) },
             ).apply(instance, ::WireSide)
         }
     }
@@ -194,8 +271,7 @@ data class WireSide(
         east: Optional<Boolean>,
         west: Optional<Boolean>
     ) : this(
-        power,
-        base
+        power, base
     ) {
         up.orElse(null)?.let { connections[Direction.UP] = it }
         down.orElse(null)?.let { connections[Direction.DOWN] = it }
