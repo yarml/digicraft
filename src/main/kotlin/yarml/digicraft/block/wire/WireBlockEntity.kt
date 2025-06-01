@@ -11,20 +11,14 @@ import net.minecraft.network.listener.ClientPlayPacketListener
 import net.minecraft.network.packet.Packet
 import net.minecraft.network.packet.s2c.play.BlockEntityUpdateS2CPacket
 import net.minecraft.registry.RegistryWrapper
-import net.minecraft.state.property.Properties
 import net.minecraft.util.math.BlockPos
 import net.minecraft.util.math.Direction
 import net.minecraft.util.shape.VoxelShape
 import net.minecraft.util.shape.VoxelShapes
-import net.minecraft.world.World
-import net.minecraft.world.WorldAccess
-import yarml.digicraft.DigiCraft
 import yarml.digicraft.block.DigiBlockEntities
-import yarml.digicraft.block.DigiBlocks
 import java.util.Optional
 
-class WireBlockEntity(pos: BlockPos, state: BlockState) :
-    BlockEntity(DigiBlockEntities.WireBlockEntity, pos, state) {
+class WireBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(DigiBlockEntities.WireBlockEntity, pos, state) {
     companion object {
         private fun nbtWriteSide(side: String, wireSide: WireSide, nbt: NbtCompound) {
             WireSide.CODEC.encodeStart(NbtOps.INSTANCE, wireSide).result().ifPresent {
@@ -34,6 +28,7 @@ class WireBlockEntity(pos: BlockPos, state: BlockState) :
 
         private fun nbtReadSide(side: String, nbt: NbtCompound): WireSide {
             val wireSide = WireSide.CODEC.parse(NbtOps.INSTANCE, nbt.get(side)).result().get()
+
             return wireSide
         }
     }
@@ -88,18 +83,9 @@ class WireBlockEntity(pos: BlockPos, state: BlockState) :
         state: BlockState,
         direction: Direction,
         neighbourState: BlockState,
-        world: WorldAccess,
-        pos: BlockPos,
-        neighbourPos: BlockPos
     ): BlockState {
         if (neighbourState.isAir) {
             removeBase(direction)
-        }
-        if (neighbourState.block == DigiBlocks.Wire) {
-            val maybeNeighbourWire = world.getBlockEntity(neighbourPos, DigiBlockEntities.WireBlockEntity)
-            if (maybeNeighbourWire.isPresent) {
-                connectToNeighbour(maybeNeighbourWire.get(), direction)
-            }
         }
         return if (sides.values.any { side -> side.exists() }) {
             state
@@ -122,26 +108,28 @@ class WireBlockEntity(pos: BlockPos, state: BlockState) :
                 neighbourSide.setConnectionOf(direction, true)
                 getSide(direction).setConnectionOf(rotationDirection, true)
             }
-            // Add connections to bases in neighbouring wire blocks that have bases on the added side
+            // Add connections to neighbouring wires
             val neighbourPos = pos.offset(rotationDirection)
-            val neighbourWire = world!!.getBlockEntity(neighbourPos, DigiBlockEntities.WireBlockEntity)
-            if (neighbourWire.isPresent) {
-                val neighbourBlockSide = neighbourWire.get().getSide(direction)
+            val maybeNeighbourWire = world!!.getBlockEntity(neighbourPos, DigiBlockEntities.WireBlockEntity)
+            if (maybeNeighbourWire.isPresent) {
+                val neighbourWire = maybeNeighbourWire.get()
+                val neighbourBlockSide = neighbourWire.getSide(direction)
                 if (neighbourBlockSide.base) {
-                    modifiedWires.add(neighbourWire.get())
+                    modifiedWires.add(neighbourWire)
                     neighbourBlockSide.setConnectionOf(rotationDirection.opposite, true)
                     getSide(direction).setConnectionOf(rotationDirection, true)
                 }
             }
 
-            // Add connection to the block that is neighbouring our neighbour in the direction we want to add a base on
+            // Add connection to neighbouring wire's neighbour
             val neighbourNeighbourPos = neighbourPos.offset(direction)
-            val neighbourNeighbourWire =
+            val maybeNeighbourNeighbourWire =
                 world!!.getBlockEntity(neighbourNeighbourPos, DigiBlockEntities.WireBlockEntity)
-            if (neighbourNeighbourWire.isPresent) {
-                val neighbourNeighbourBlockSide = neighbourNeighbourWire.get().getSide(rotationDirection.opposite)
+            if (maybeNeighbourNeighbourWire.isPresent) {
+                val neighbourNeighbourWire = maybeNeighbourNeighbourWire.get()
+                val neighbourNeighbourBlockSide = neighbourNeighbourWire.getSide(rotationDirection.opposite)
                 if (neighbourNeighbourBlockSide.base) {
-                    modifiedWires.add(neighbourNeighbourWire.get())
+                    modifiedWires.add(neighbourNeighbourWire)
                     neighbourNeighbourBlockSide.setConnectionOf(direction.opposite, true)
                     getSide(direction).setConnectionOf(rotationDirection, true)
                 }
@@ -161,33 +149,34 @@ class WireBlockEntity(pos: BlockPos, state: BlockState) :
         val modifiedWires = mutableSetOf<WireBlockEntity>()
         sides[direction] = WireSide(power = false, base = false)
         for (rotationDirection in WireShapes.clockwiseNeighbors(direction)) {
+            // Remove connection to base within this wire block
             val neighbourSide = getSide(rotationDirection)
             if (neighbourSide.connectionOf(direction)) {
                 neighbourSide.setConnectionOf(direction, false)
             }
 
-            // Remove connections in neighbouring wire blocks that have bases on the removed side
-            val neighbourPos = pos.offset(rotationDirection)
-            val neighbourWire = world!!.getBlockEntity(neighbourPos, DigiBlockEntities.WireBlockEntity)
-            if (neighbourWire.isPresent) {
-                val neighbourBlockSide = neighbourWire.get().getSide(direction)
+            // Remove connections in neighbouring wire blocks
+            val neighbourBlockPos = pos.offset(rotationDirection)
+            val maybeNeighbourWire = world!!.getBlockEntity(neighbourBlockPos, DigiBlockEntities.WireBlockEntity)
+            if (maybeNeighbourWire.isPresent) {
+                val neighbourWire = maybeNeighbourWire.get()
+                val neighbourBlockSide = neighbourWire.getSide(direction)
                 if (neighbourBlockSide.base) {
-                    modifiedWires.add(neighbourWire.get())
+                    modifiedWires.add(neighbourWire)
                     neighbourBlockSide.setConnectionOf(rotationDirection.opposite, false)
-                    neighbourWire.get().markDirty()
                 }
             }
 
-            // Remove connection to the block that is neighbouring our neighbour in the direction we want to remove a base on
-            val neighbourNeighbourPos = neighbourPos.offset(direction)
-            val neighbourNeighbourWire =
+            // Remove connection to the block that is neighbouring our neighbour
+            val neighbourNeighbourPos = neighbourBlockPos.offset(direction)
+            val maybeNeighbourNeighbourWire =
                 world!!.getBlockEntity(neighbourNeighbourPos, DigiBlockEntities.WireBlockEntity)
-            if (neighbourNeighbourWire.isPresent) {
-                val neighbourNeighbourBlockSide = neighbourNeighbourWire.get().getSide(rotationDirection.opposite)
+            if (maybeNeighbourNeighbourWire.isPresent) {
+                val neighbourNeighbourWire = maybeNeighbourNeighbourWire.get()
+                val neighbourNeighbourBlockSide = neighbourNeighbourWire.getSide(rotationDirection.opposite)
                 if (neighbourNeighbourBlockSide.base) {
-                    modifiedWires.add(neighbourNeighbourWire.get())
+                    modifiedWires.add(neighbourNeighbourWire)
                     neighbourNeighbourBlockSide.setConnectionOf(direction.opposite, false)
-                    neighbourNeighbourWire.get().markDirty()
                 }
             }
         }
@@ -201,6 +190,8 @@ class WireBlockEntity(pos: BlockPos, state: BlockState) :
         for (direction in Direction.entries) {
             removeBase(direction)
         }
+        markRemoved()
+        world!!.removeBlock(pos, false)
     }
 
     private fun connectToNeighbour(neighbour: WireBlockEntity, neighbourDirection: Direction) {
